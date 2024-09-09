@@ -33,16 +33,24 @@ func main() {
 			os.Exit(1)
 		default:
 			fetches := client.PollRecords(context.Background(), 10)
-			iter := fetches.RecordIter()
-			for !iter.Done() {
-				record := iter.Next()
-				person := new(internal.Person)
-				err := json.Unmarshal(record.Value, person)
-				if err != nil {
-					slog.Warn("failed to unmarshal record", "record", string(record.Value))
+			for _, fetch := range fetches {
+				for _, topic := range fetch.Topics {
+					for _, partition := range topic.Partitions {
+						persons := make(map[int]*internal.Person, len(partition.Records))
+						// Aggregate person by id for batch processing
+						for _, record := range partition.Records {
+							person := new(internal.Person)
+							err := json.Unmarshal(record.Value, person)
+							if err != nil {
+								slog.Warn("failed to unmarshal record", "record", string(record.Value))
+							}
+							persons[person.Id] = person
+						}
+						for _, person := range persons {
+							slog.Info("processed person", "person", person)
+						}
+					}
 				}
-				slog.Info("parsed record", "person", person, "in topic", record.Topic,
-					"in partition", record.Partition, "at offset", record.Offset, "created at", record.Timestamp)
 			}
 		}
 	}
